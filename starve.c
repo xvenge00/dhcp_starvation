@@ -30,11 +30,17 @@
 #define ETHERNET_HARDWARE_ADDRESS  1    //htype
 #define CHADDR_LEN 6
 
-#define DHCP_OPTION_MESSAGE_TYPE        53
+#define REQUESTED_IP_ADDR_OPTION 50
+#define DHCP_OPTION_MESSAGE_TYPE 53
+#define CLIENT_INDENTIFIER_OPTION 61
+
+#define ETHERNET_IDENTIFIER_OPTION 0x01
 
 int dhcpoffer_timeout=2;
 
-
+#define DEBUG 1
+#define debug_print(...) \
+            do { if (DEBUG) fprintf(stderr, __VA_ARGS__); } while (0)
 
 char *network_interface_name;
 
@@ -44,7 +50,7 @@ int generate_chaddr(uint8_t *chaddr) {
     }
 }
 
-int create_dhcp_socket(void) {
+int create_dhcp_socket() {
     struct sockaddr_in myname;
     struct ifreq interface;
     int sock;
@@ -91,6 +97,7 @@ int create_dhcp_socket(void) {
         exit(EXIT_FAILURE);
     }
 
+    debug_print("Socket %d created\n", sock);
     return sock;
 }
 
@@ -145,8 +152,14 @@ int send_DHCP_discover(int sock, uint8_t *chaddr, uint32_t xid) {
     bzero(&sockaddr_broadcast.sin_zero, sizeof(sockaddr_broadcast.sin_zero));
 
     /* send the DHCPDISCOVER packet out */
-    sendto(sock,&discover_packet, sizeof(discover_packet), 0, &sockaddr_broadcast, sizeof(sockaddr_broadcast));
-    return 1;
+    ssize_t bytes_sent = sendto(sock,&discover_packet, sizeof(discover_packet), 0, &sockaddr_broadcast, sizeof(sockaddr_broadcast));
+    if (bytes_sent== sizeof(dhcp_packet)) {
+        debug_print("\tDHCP DISCOVER was sent.\n");
+    } else {
+        debug_print("\tDHCP DISCOVER failed.\n");
+    }
+
+    return bytes_sent > 0;
 }
 
 int recv_DHCP_offer(int sock, int expect_xid, struct in_addr *offered_ip) {
@@ -156,18 +169,26 @@ int recv_DHCP_offer(int sock, int expect_xid, struct in_addr *offered_ip) {
     ssize_t recv_res;
 
     while (!correct) {
+        debug_print("\tDHCP OFFER: waiting\n");
+//        recv_res = recvfrom(sock, &offer, sizeof(offer), MSG_PEEK, &source_address, sizeof(source_address));
         recv_res = recvfrom(sock, &offer, sizeof(offer), 0, &source_address, sizeof(source_address));
         if (recv_res < 0) {
-            printf("Error: Recieve failed");
+            //debug_print("SIZEOF(OFFER) = %d\n", sizeof(offer));
+            fprintf(stderr, "Error: Recieve failed\n");
             exit(EXIT_FAILURE);
         }
+        debug_print("\tDHCP OFFER: recieved\n");
 
         if ((offer.xid == expect_xid) && (1)) { //TODO and chaddr
             correct = true;
-        }   // else wait for new offer
+            debug_print("\tDHCP OFFER: was correct\n");
+        } else {
+            debug_print("\tDHCP OFFER: was incorrect\n");
+        }
     }
 
     *offered_ip = offer.yiaddr;
+    debug_print("\tDHCP OFFERED addr: %s\n", inet_ntoa(offer.yiaddr));
 
     return 1;
 
@@ -191,7 +212,7 @@ int parse_args(int argc, char **argv) {
         }
 }
 
-int send_DHCP_request(int sock, uint32_t xid, uint8_t *chaddr) {
+int send_DHCP_request(int sock, uint32_t xid, uint8_t *chaddr, struct in_addr *req_IP) {
     dhcp_packet request_packet;
     struct sockaddr_in sockaddr_broadcast;
 
@@ -203,10 +224,10 @@ int send_DHCP_request(int sock, uint32_t xid, uint8_t *chaddr) {
     request_packet.hlen=CHADDR_LEN;
     request_packet.hops = 0;
 
-    request_packet.xid = xid;   //xid is random
+    request_packet.xid = xid;   //xid from 1. transaction
 
     request_packet.secs = 0;   //TODO sekundy od zaciatku
-    request_packet.flags = htons(DHCP_BROADCAST_FLAG);     //BROADCAST FLAG
+    //    request_packet.flags = htons(DHCP_BROADCAST_FLAG);     //BROADCAST FLAG
     /*
      * ciaddr = 0
      * yiaddr = 0
@@ -221,10 +242,21 @@ int send_DHCP_request(int sock, uint32_t xid, uint8_t *chaddr) {
     request_packet.options[2] = '\x53';
     request_packet.options[3] = '\x63';
 
-    /* DHCP discover */
+    /* DHCP request */
     request_packet.options[4] = DHCP_OPTION_MESSAGE_TYPE;  /* DHCP message type option identifier */
     request_packet.options[5] = 1;                         /* DHCP message option length in bytes */
     request_packet.options[6] = DHCPREQUEST;
+
+    /* Requested IP */
+    request_packet.options[7] = REQUESTED_IP_ADDR_OPTION;
+    request_packet.options[8] = 4;
+    memcpy(&(request_packet.options[9]), &(req_IP->s_addr), sizeof(req_IP->s_addr));
+
+    /* Client identifier option */
+    request_packet.options[13] = CLIENT_INDENTIFIER_OPTION;
+    request_packet.options[14] = 7;
+    request_packet.options[15] = ETHERNET_IDENTIFIER_OPTION;
+    memcpy(&(request_packet.options[16]), chaddr, CHADDR_LEN);
 
     /* send the DHCPDISCOVER packet to broadcast address */
     sockaddr_broadcast.sin_family = AF_INET;
@@ -232,11 +264,9 @@ int send_DHCP_request(int sock, uint32_t xid, uint8_t *chaddr) {
     sockaddr_broadcast.sin_addr.s_addr = INADDR_BROADCAST;
     bzero(&sockaddr_broadcast.sin_zero, sizeof(sockaddr_broadcast.sin_zero));
 
-    /* send the DHCPDISCOVER packet out */
+    /* send the DHCPREQUEST packet out */
     sendto(sock,&request_packet, sizeof(request_packet), 0, &sockaddr_broadcast, sizeof(sockaddr_broadcast));
     return 1;
-
-    //TODO neni tam zakodovana ip
 }
 
 int recv_DHCP_ack() {
@@ -252,19 +282,27 @@ int main(int argc, char **argv) {
 
     int dhcp_socket = create_dhcp_socket();
 
-    printf("socket spraveny\n");
     srand(time(NULL));
 
     if (1) {    //todo while
         generate_chaddr(chaddr);
+        debug_print("Generated chaddr:  %02x:%02x:%02x:%02x:%02x:%02x\n",
+                    (unsigned char) chaddr[0],
+                    (unsigned char) chaddr[1],
+                    (unsigned char) chaddr[2],
+                    (unsigned char) chaddr[3],
+                    (unsigned char) chaddr[4],
+                    (unsigned char) chaddr[5]);
+
         xid = htonl(random());
+        debug_print("Generated XID: %d\n", ntohl(xid));
 
         send_DHCP_discover(dhcp_socket, chaddr, xid);
         recv_DHCP_offer(dhcp_socket, xid, &offered_IP);
-        send_DHCP_request(dhcp_socket, xid, chaddr);
+//        send_DHCP_request(dhcp_socket, xid, chaddr, &offered_IP);
 //        recv_DHCP_ack();
     }
 
-    close(dhcp_socket);
+//    close(dhcp_socket);
 
 }
