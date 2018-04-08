@@ -7,20 +7,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-//#include <locale.h>
-//#include <string.h>
-//#include <errno.h>
-//#include <unistd.h>
-//#include <sys/time.h>
-//#include <sys/ioctl.h>
-//#include <fcntl.h>
-//#include <getopt.h>
-//#include <sys/socket.h>
-//#include <sys/types.h>
-//#include <netdb.h>
-//#include <netinet/in.h>
-//#include <net/if.h>
-//#include <arpa/inet.h>
 
 #define MAX_DHCP_CHADDR_LENGTH           16
 #define MAX_DHCP_SNAME_LENGTH            64
