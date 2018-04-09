@@ -1,7 +1,7 @@
 CFLAGS = -std=gnu99 -pedantic
 CC = gcc
 PROJ = ipk-dhcpstarve
-FILES = $(PROJ).c $(PROJ).h Makefile README.md
+FILES = $(PROJ).c $(PROJ).h Makefile README.md dokumentace.pdf
 
 all:
 	make ipk-dhcpstarve

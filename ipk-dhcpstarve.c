@@ -108,10 +108,11 @@ void flood_DHCP_discover(int sock) {
     discover_packet.op = BOOTREQUEST;
     discover_packet.htype=ETHERNET_HTYPE;
     discover_packet.hlen=CHADDR_LEN;
-    discover_packet.hops = 0;
     discover_packet.flags = htons(DHCP_BROADCAST_FLAG);     //BROADCAST FLAG
-    discover_packet.secs = 0;
+
     /*
+     * hops   = 0
+     * secs   = 0
      * ciaddr = 0
      * yiaddr = 0
      * siaddr = 0
