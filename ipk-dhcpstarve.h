@@ -11,6 +11,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <netinet/ip.h>
 
 #define MAX_DHCP_CHADDR_LENGTH           16
 #define MAX_DHCP_SNAME_LENGTH            64
@@ -18,13 +20,13 @@
 #define MAX_DHCP_OPTIONS_LENGTH          312    //minimum according to specification
 
 typedef struct dhcp_packet_struct {
-    u_int8_t op;                    // packet type
-    u_int8_t htype;                 // hardware address type
-    u_int8_t hlen;                  // hardware address len
-    u_int8_t hops;
-    u_int32_t xid;                  // random transaction id
-    u_int16_t secs;                 // seconds since began aquisition
-    u_int16_t flags;
+    uint8_t op;                    // packet type
+    uint8_t htype;                 // hardware address type
+    uint8_t hlen;                  // hardware address len
+    uint8_t hops;
+    uint32_t xid;                  // random transaction id
+    uint16_t secs;                 // seconds since began aquisition
+    uint16_t flags;
     struct in_addr ciaddr;          // IP, not used
     struct in_addr yiaddr;          // client IP
     struct in_addr siaddr;          // IP address of next server to use in bootstrap
